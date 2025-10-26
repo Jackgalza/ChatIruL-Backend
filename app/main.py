@@ -1,60 +1,66 @@
-# app/main.py
-import uuid
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from google import genai
 import os
+import uuid
 
-from app import db
-from app.ai_client import respond_to
+app = FastAPI()
 
-app = FastAPI(title="ChatIruL Backend")
+# Middleware untuk mengizinkan GitHub Pages mengakses backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # kalau mau aman nanti ubah ke domain kamu aja
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.on_event("startup")
-def startup():
-    db.init_db()
+# Simpan percakapan dalam memori sementara
+conversations = {}
 
-class SendReq(BaseModel):
-    session_id: str
-    conversation_id: int
-    message: str
-    model: str = None
+# Model untuk pesan
+class Message(BaseModel):
+    conversation_id: str
+    text: str
 
+# API Root (cek koneksi)
 @app.get("/")
-def index():
-    return {"status":"ok","note":"ChatIruL backend up"}
+def root():
+    return {"status": "ok", "note": "ChatIruL backend aktif!"}
 
-@app.post("/api/new-session")
-def new_session():
-    session_id = str(uuid.uuid4())
-    db.create_session(session_id)
-    conv_id = db.create_conversation(session_id)
-    return {"session_id": session_id, "conversation_id": conv_id}
+# Buat conversation baru
+@app.post("/conversations")
+def new_conversation():
+    cid = str(uuid.uuid4())
+    conversations[cid] = []
+    return {"id": cid}
 
-@app.post("/api/new-conversation")
-def new_conversation(payload: dict):
-    session_id = payload.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id required")
-    conv_id = db.create_conversation(session_id)
-    return {"conversation_id": conv_id}
+# Ambil semua conversation
+@app.get("/conversations")
+def list_conversations():
+    return [{"id": cid, "messages": conversations[cid]} for cid in conversations]
 
-@app.get("/api/conversations/{session_id}")
-def get_conversations(session_id: str):
-    convs = db.list_conversations(session_id)
-    return {"conversations": convs}
+# Kirim pesan ke AI (Google Gemini)
+@app.post("/chat")
+def chat(msg: Message):
+    if msg.conversation_id not in conversations:
+        raise HTTPException(status_code=404, detail="Conversation tidak ditemukan")
 
-@app.get("/api/messages/{conversation_id}")
-def get_messages(conversation_id: int):
-    msgs = db.get_messages(conversation_id)
-    return {"messages": msgs}
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY tidak diset di Render")
 
-@app.post("/api/send")
-def send_message(req: SendReq):
-    db.add_message(req.conversation_id, "user", req.message)
-    msgs = db.get_messages(req.conversation_id)
-    prompt = "\n".join([m["role"] + ": " + m["content"] for m in msgs[-10:]])
-    resp_text = respond_to(prompt, model=req.model)
-    db.add_message(req.conversation_id, "assistant", resp_text)
-    return {"text": resp_text}
+    client = genai.Client(api_key=api_key)
+    model_name = os.environ.get("DEFAULT_MODEL", "gemini-1.5-flash")
+
+    try:
+        chat = client.chats.create(model=model_name)
+        response = chat.send_message(msg.text)
+        answer = response.text
+    except Exception as e:
+        answer = f"[Error dari Gemini] {e}"
+
+    # Simpan riwayat
+    conversations[msg.conversation_id].append({"user": msg.text, "bot": answer})
+    return {"response": answer}
