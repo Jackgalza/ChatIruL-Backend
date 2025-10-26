@@ -11,9 +11,6 @@ from app.ai_client import respond_to
 
 app = FastAPI(title="ChatIruL Backend")
 
-# serve static for quick test if needed
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
 @app.on_event("startup")
 def startup():
     db.init_db()
