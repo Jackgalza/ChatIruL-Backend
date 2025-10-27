@@ -8,16 +8,16 @@ import traceback
 
 app = FastAPI()
 
-# Izinkan akses dari frontend
+# CORS agar bisa diakses dari GitHub Pages
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # nanti bisa ubah ke domain GitHub Pages kamu
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Menyimpan percakapan sementara
+# Simpan percakapan sementara
 conversations = {}
 
 class Message(BaseModel):
@@ -34,10 +34,6 @@ def new_conversation():
     conversations[cid] = []
     return {"id": cid}
 
-@app.get("/conversations")
-def list_conversations():
-    return [{"id": cid, "messages": conversations[cid]} for cid in conversations]
-
 @app.post("/chat")
 def chat(msg: Message):
     if msg.conversation_id not in conversations:
@@ -47,9 +43,11 @@ def chat(msg: Message):
     if not api_key:
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY tidak diset di Render")
 
+    genai.configure(api_key=api_key)
+    model_name = "gemini-1.5-flash"
+
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel(model_name)
         response = model.generate_content(msg.text)
         answer = response.text
     except Exception as e:
