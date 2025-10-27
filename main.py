@@ -54,7 +54,7 @@ def chat(msg: Message):
     genai.configure(api_key=api_key)
 
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(msg.text)
         answer = response.text
     except Exception as e:
