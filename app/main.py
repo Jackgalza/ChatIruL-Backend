@@ -4,66 +4,98 @@ from pydantic import BaseModel
 import google.generativeai as genai
 import os
 import uuid
+import traceback
 
 app = FastAPI()
 
-# Middleware agar GitHub Pages bisa akses API backend Render
+# -----------------------------
+#  CORS agar frontend GitHub Pages bisa akses backend
+# -----------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # bisa diganti ke domain kamu nanti
+    allow_origins=["*"],  # kalau mau aman, ubah ke domain GitHub Pages kamu
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Simpan percakapan dalam memori sementara
+# -----------------------------
+#  Simpan percakapan sementara di memori
+# -----------------------------
 conversations = {}
 
-# Model pesan
+# -----------------------------
+#  Model request dari frontend
+# -----------------------------
 class Message(BaseModel):
     conversation_id: str
     text: str
 
-# Root API (cek koneksi)
+# -----------------------------
+#  Root endpoint (cek koneksi)
+# -----------------------------
 @app.get("/")
 def root():
     return {"status": "ok", "note": "ChatIruL backend aktif dengan Gemini v1!"}
 
-# Buat conversation baru
+# -----------------------------
+#  Buat percakapan baru
+# -----------------------------
 @app.post("/conversations")
 def new_conversation():
     cid = str(uuid.uuid4())
     conversations[cid] = []
     return {"id": cid}
 
-# Ambil semua conversation
+# -----------------------------
+#  Ambil semua percakapan aktif
+# -----------------------------
 @app.get("/conversations")
 def list_conversations():
     return [{"id": cid, "messages": conversations[cid]} for cid in conversations]
 
-# Kirim pesan ke AI (Gemini)
+# -----------------------------
+#  Kirim pesan ke AI Gemini
+# -----------------------------
 @app.post("/chat")
 def chat(msg: Message):
+    # Pastikan conversation ID valid
     if msg.conversation_id not in conversations:
         raise HTTPException(status_code=404, detail="Conversation tidak ditemukan")
 
+    # Ambil API key dari Render
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY tidak diset di Render")
 
-    # Konfigurasi Gemini API
+    # Konfigurasi Gemini
     genai.configure(api_key=api_key)
-
-    # Pilih model yang benar (versi terbaru)
     model_name = os.environ.get("DEFAULT_MODEL", "gemini-1.5-flash-8b")
 
     try:
+        # Kirim ke Gemini API
         model = genai.GenerativeModel(model_name)
         response = model.generate_content(msg.text)
+
+        # Ambil hasil text
         answer = response.text
+
     except Exception as e:
+        print("=== ERROR GEMINI ===")
+        traceback.print_exc()
         answer = f"[Error dari Gemini] {e}"
 
-    # Simpan riwayat percakapan
-    conversations[msg.conversation_id].append({"user": msg.text, "bot": answer})
+    # Simpan riwayat
+    conversations[msg.conversation_id].append({
+        "user": msg.text,
+        "bot": answer
+    })
+
     return {"response": answer}
+
+# -----------------------------
+#  Jalankan secara lokal (opsional)
+# -----------------------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
