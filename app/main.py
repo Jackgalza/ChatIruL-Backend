@@ -70,7 +70,7 @@ def chat(msg: Message):
 
     # Konfigurasi Gemini
     genai.configure(api_key=api_key)
-    model_name = os.environ.get("DEFAULT_MODEL", "gemini-1.5-flash-8b")
+    model_name = os.environ.get("DEFAULT_MODEL", "gemini-1.5-flash")
 
     try:
         # Kirim ke Gemini API
