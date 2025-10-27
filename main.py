@@ -28,6 +28,11 @@ class Message(BaseModel):
 def root():
     return {"status": "ok", "note": "ChatIruL backend aktif 🎯"}
 
+@app.head("/")
+def head_root():
+    return {"status": "ok"}
+
+
 @app.post("/conversations")
 def new_conversation():
     cid = str(uuid.uuid4())
