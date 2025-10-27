@@ -8,16 +8,16 @@ import traceback
 
 app = FastAPI()
 
-# CORS agar bisa diakses dari GitHub Pages
+# Izinkan akses dari frontend (GitHub Pages)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # bisa diganti ke domain GitHub Pages kamu
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Simpan percakapan sementara
+# Simpan percakapan sementara (RAM)
 conversations = {}
 
 class Message(BaseModel):
@@ -28,10 +28,10 @@ class Message(BaseModel):
 def root():
     return {"status": "ok", "note": "ChatIruL backend aktif 🎯"}
 
+# Tambahkan handler HEAD biar Render gak stuck di "In progress"
 @app.head("/")
 def head_root():
     return {"status": "ok"}
-
 
 @app.post("/conversations")
 def new_conversation():
@@ -41,24 +41,26 @@ def new_conversation():
 
 @app.post("/chat")
 def chat(msg: Message):
+    import traceback
+
     if msg.conversation_id not in conversations:
         raise HTTPException(status_code=404, detail="Conversation tidak ditemukan")
 
-    api_key = os.getenv("GOOGLE_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY tidak diset di Render")
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY tidak diset di Render")
 
+    # Konfigurasi Gemini API
     genai.configure(api_key=api_key)
-    model_name = "gemini-1.5-flash"
 
     try:
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
         response = model.generate_content(msg.text)
         answer = response.text
     except Exception as e:
-        print("=== ERROR GEMINI ===")
+        print("=== GEMINI ERROR ===")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Gemini error: {e}")
 
     conversations[msg.conversation_id].append({"user": msg.text, "bot": answer})
     return {"response": answer}
